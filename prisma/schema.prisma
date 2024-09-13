@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProductStatus {
+  ACTIVE
+  DRAFT
+  ARCHIVE
+}
+
+model Product {
+  id           Int           @id @default(autoincrement())
+  sku          String        @unique
+  name         String
+  description  String        @db.Text
+  priceCents   Int           @map("price_cents")
+  categoryName String
+  category     Category      @relation(fields: [categoryName], references: [name])
+  stock        Int           @default(0)
+  onStock      Boolean       @default(false) @map("on_stock")
+  images       String[]      @default([])
+  status       ProductStatus
+  variants     Variant[]
+  keywords     String[]
+
+  @@map("products")
+}
+
+model Variant {
+  id        Int     @id @default(autoincrement())
+  sku       String  @unique
+  name      String
+  value     String
+  stock     Int     @default(0)
+  onStock   Boolean @default(false) @map("on_stock")
+  product   Product @relation(fields: [productId], references: [id])
+  productId Int     @map("product_id")
+
+  @@map("variants")
+}
+
+model Category {
+  name     String    @unique
+  products Product[]
+
+  @@map("categories")
+}
