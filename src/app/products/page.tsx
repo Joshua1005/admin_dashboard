@@ -51,17 +51,20 @@ import {
   flexRender,
   getCoreRowModel,
   getFilteredRowModel,
+  getPaginationRowModel,
   getSortedRowModel,
+  PaginationState,
   useReactTable,
   VisibilityState,
 } from "@tanstack/react-table";
 import { rankItem } from "@tanstack/match-sorter-utils";
-import { useMemo, useState } from "react";
+import { SetStateAction, useMemo, useState } from "react";
 import {
   Select,
   SelectContent,
   SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
 } from "@/components/ui/select";
 import { SelectValue } from "@radix-ui/react-select";
@@ -69,6 +72,19 @@ import { cn } from "@/lib/utils";
 import { Product, ProductStatus } from "@prisma/client";
 import { useQuery } from "@tanstack/react-query";
 import { getProducts } from "@/actions/products";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+import {
+  DoubleArrowLeftIcon,
+  DoubleArrowRightIcon,
+} from "@radix-ui/react-icons";
 
 const columnHelper = createColumnHelper<Product>();
 
@@ -79,6 +95,10 @@ const Homepage = () => {
   });
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 5,
+  });
   const [globalFilter, setGlobalFilter] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("");
 
@@ -160,9 +180,12 @@ const Homepage = () => {
       globalFilter,
       columnVisibility,
       columnFilters,
+      pagination,
     },
+    onPaginationChange: setPagination,
     onGlobalFilterChange: setGlobalFilter,
     onColumnVisibilityChange: setColumnVisibility,
+    getPaginationRowModel: getPaginationRowModel(),
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -177,6 +200,17 @@ const Homepage = () => {
     },
     globalFilterFn: "fuzzy",
   });
+
+  const maxPage = 5;
+  const pageBlock = Math.floor(pagination.pageIndex / maxPage);
+  const startPage = pageBlock * maxPage;
+  const pageBlockEnd = Math.min(startPage + maxPage, table.getPageCount());
+  const pages = Array.from(
+    { length: pageBlockEnd - startPage },
+    (_, index) => startPage + index,
+  );
+  const getCanPreviousBlock = pageBlock > 0;
+  const getCanNextBlock = pageBlockEnd < table.getPageCount();
 
   return (
     <div className="min-h-screen gap-2 space-y-6 p-6">
@@ -232,19 +266,14 @@ const Homepage = () => {
                   .filter((column) => column.getCanHide())
                   .map((column) => (
                     <DropdownMenuCheckboxItem
+                      className="uppercase"
                       checked={column.getIsVisible()}
                       key={column.id}
                       onCheckedChange={(value) =>
                         column.toggleVisibility(!!value)
                       }
                     >
-                      <span className="text-sm capitalize">
-                        {column.id === "priceCents"
-                          ? "Price"
-                          : column.id === "sku"
-                            ? "SKU"
-                            : column.id.split(/(?=[A-Z])/).join(" ")}
-                      </span>
+                      {column.id.split(/(?=[A-Z])/).join(" ")}
                     </DropdownMenuCheckboxItem>
                   ))}
               </DropdownMenuContent>
@@ -305,30 +334,144 @@ const Homepage = () => {
                   ))}
                 </TableHeader>
                 <TableBody>
-                  {table.getRowModel().rows.map((row) => (
-                    <TableRow key={row.id}>
-                      {row.getVisibleCells().map((cell) => (
-                        <TableCell key={cell.id}>
-                          {flexRender(
-                            cell.column.columnDef.cell,
-                            cell.getContext(),
-                          )}
-                        </TableCell>
-                      ))}
+                  {table.getRowModel().rows.length > 0 ? (
+                    table.getRowModel().rows.map((row) => (
+                      <TableRow key={row.id}>
+                        {row.getVisibleCells().map((cell) => (
+                          <TableCell key={cell.id}>
+                            {flexRender(
+                              cell.column.columnDef.cell,
+                              cell.getContext(),
+                            )}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell
+                        colSpan={columns.length}
+                        className="text-center text-muted-foreground"
+                      >
+                        No results.
+                      </TableCell>
                     </TableRow>
-                  ))}
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
             <CardFooter>
-              <p className="text-xs text-muted-foreground">
-                Showing <span className="font-bold">{table.getRowCount()}</span>{" "}
-                of{" "}
-                <span className="font-bold">
-                  {table.getCoreRowModel().rows.length}
-                </span>{" "}
-                products
+              <p className="w-full text-xs text-muted-foreground">
+                Showing{" "}
+                <strong>
+                  {!!table.getRowCount()
+                    ? pagination.pageIndex * pagination.pageSize + 1
+                    : 0}
+                </strong>{" "}
+                -{" "}
+                <strong>
+                  {Math.min(
+                    (pagination.pageIndex + 1) * pagination.pageSize,
+                    table.getRowCount(),
+                  )}{" "}
+                </strong>
+                of <strong>{table.getCoreRowModel().rows.length}</strong>{" "}
+                {table.getCoreRowModel().rows.length <= 1
+                  ? "product."
+                  : "products."}
               </p>
+              <Pagination>
+                <PaginationContent>
+                  <PaginationItem>
+                    <Button
+                      variant="ghost"
+                      disabled={!table.getCanPreviousPage()}
+                      onClick={() => table.firstPage()}
+                    >
+                      <PaginationLink>
+                        <DoubleArrowLeftIcon />
+                      </PaginationLink>
+                    </Button>
+                  </PaginationItem>
+                  <PaginationItem>
+                    <Button
+                      disabled={!table.getCanPreviousPage()}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        table.previousPage();
+                      }}
+                      variant="ghost"
+                    >
+                      <PaginationPrevious />
+                    </Button>
+                  </PaginationItem>
+
+                  {getCanPreviousBlock && (
+                    <PaginationItem>
+                      <PaginationEllipsis />
+                    </PaginationItem>
+                  )}
+                  {pages.map((pageIndex) => (
+                    <PaginationItem key={pageIndex}>
+                      <PaginationLink
+                        isActive={pageIndex === pagination.pageIndex}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          table.setPageIndex(pageIndex);
+                        }}
+                      >
+                        {pageIndex + 1}
+                      </PaginationLink>
+                    </PaginationItem>
+                  ))}
+                  {getCanNextBlock && (
+                    <PaginationItem>
+                      <PaginationEllipsis />
+                    </PaginationItem>
+                  )}
+                  <PaginationItem>
+                    <Button
+                      disabled={!table.getCanNextPage()}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        table.nextPage();
+                      }}
+                      variant="ghost"
+                    >
+                      <PaginationNext />
+                    </Button>
+                  </PaginationItem>
+                  <PaginationItem>
+                    <Button
+                      variant="ghost"
+                      disabled={!table.getCanNextPage()}
+                      onClick={() => table.lastPage()}
+                    >
+                      <PaginationLink>
+                        <DoubleArrowRightIcon />
+                      </PaginationLink>
+                    </Button>
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+              <Select
+                value={table.getState().pagination.pageSize.toString()}
+                onValueChange={(e) => table.setPageSize(parseFloat(e))}
+              >
+                <SelectTrigger className="max-w-32">
+                  <SelectValue placeholder="Row size" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectLabel>Row size</SelectLabel>
+                    {[5, 10, 15, 20, 25, 30, 35, 40, 45, 50].map((number) => (
+                      <SelectItem value={number.toString()}>
+                        {number}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </CardFooter>
           </Card>
         </TabsContent>

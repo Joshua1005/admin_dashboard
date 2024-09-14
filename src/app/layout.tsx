@@ -24,7 +24,11 @@ const RootLayout = ({ children }: RootLayoutProps) => {
         <form
           action={async () => {
             "use server";
-            await db.product.create({ data: { ...createRandomProduct() } });
+            Array.from(
+              { length: 200 },
+              async () =>
+                await db.product.create({ data: { ...createRandomProduct() } }),
+            );
           }}
         >
           <Button>Click</Button>
